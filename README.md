@@ -1,4 +1,4 @@
-Role Name
+virtualbox_guest_additions
 =========
 
 Ansible role for the installation of the latest VirtualBox Guest Additions, with no need for the local media. Currently supported on:
