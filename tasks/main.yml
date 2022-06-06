@@ -1,0 +1,96 @@
+# tasks file for virtualbox_guest_additions
+- name: Run only on currently allowed distributions
+  debug: msg="{{ ansible_distribution }} is not yet supported"
+  when:
+    - ansible_distribution != 'RedHat'
+    - ansible_distribution != 'CentOS'
+  failed_when: true
+
+- name: Check if VirtualBox Guest Additions are already installed.
+  shell: |
+    set -o pipefail
+    lsmod | grep vboxguest
+  register: VBOXGUEST
+  changed_when: false
+  failed_when: false
+
+- name: Report
+  debug: msg="VirtualBox Guest Additions are already installed"
+  when: VBOXGUEST.stdout|length > 0
+
+- name: End the play for hosts that have VirtualBox Guest Additions installed
+  meta: end_host
+  when: VBOXGUEST.stdout|length > 0
+
+# In case of you did kernel update before running this role {{ ansible_kernel }} will
+# show an old value, so I chose this as a ease step (you can use "setup" module instead).
+- name: Fetch current kernel version
+  command: uname -r
+  register: KERNEL_VER
+  when: VBOXGUEST.stdout|length == 0
+
+- name: Install packages required by VirtualBox Guest Additions
+  package:
+    name:
+      - wget
+      - bzip2
+      - tar
+      - gcc
+      - make
+      - perl
+      - elfutils-libelf-devel
+      - "kernel-headers-{{ KERNEL_VER.stdout }}"
+      - "kernel-devel-{{ KERNEL_VER.stdout }}"
+    state: present
+
+- name: Install current libselinux-python (RHEL6-7)
+  package:
+    name:
+      - libselinux-python
+    state: present
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_distribution_major_version|int < 8
+
+- name: Fetch the latest version of VirtualBox Guest Additions from the internet
+  uri:
+    url: https://download.virtualbox.org/virtualbox/LATEST.TXT
+    return_content: yes
+  register: VER
+
+- name: Download VBoxGuestAdditions_{{ VER['content']|trim }}.iso
+  get_url:
+    url: https://download.virtualbox.org/virtualbox/{{ VER['content']|trim }}/VBoxGuestAdditions_{{ VER['content']|trim }}.iso
+    dest: /tmp/VBoxGuestAdditions_{{ VER['content']|trim }}.iso
+
+- name: Mount VirtualBox Guest Additions ISO
+  mount:
+    path: /mnt/ISO
+    src: /tmp/VBoxGuestAdditions_{{ VER['content']|trim }}.iso
+    opts: loop
+    fstype: iso9660
+    state: mounted
+
+- name: Install VirtualBox Guest Additions
+  command: sh /mnt/ISO/VBoxLinuxAdditions.run
+  when: VBOXGUEST.stdout|length == 0
+
+- name: Unmount a mounted volume
+  mount:
+    path: /mnt/ISO
+    state: absent
+
+- name: Reboot server
+  reboot:
+  tags: REBOOT
+  when: reboot_is_allowed
+
+- name: Check if VirtualBox Guest Additions are running now
+  command: pgrep VBoxService
+  register: VBOXSERVICE
+  changed_when: false
+  failed_when: false
+
+- name: Report
+  debug: msg="VirtualBox Guest Additions are running"
+  when: VBOXSERVICE.stdout|length > 0
