@@ -51,7 +51,7 @@ Playbook example
 License
 -------
 
-No license, use it as you wish.
+GNU GPLv3
 
 Author Information
 ------------------
